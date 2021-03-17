@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -48,6 +49,7 @@ func handleSearch(searcher Searcher) func(w http.ResponseWriter, r *http.Request
 			w.Write([]byte("missing search query in URL params"))
 			return
 		}
+
 		results := searcher.Search(query[0])
 		buf := &bytes.Buffer{}
 		enc := json.NewEncoder(buf)
@@ -73,10 +75,36 @@ func (s *Searcher) Load(filename string) error {
 }
 
 func (s *Searcher) Search(query string) []string {
-	idxs := s.SuffixArray.Lookup([]byte(query), -1)
-	results := []string{}
-	for _, idx := range idxs {
-		results = append(results, s.CompleteWorks[idx-250:idx+250])
+
+	results := s.SubSearch(query)
+	words := strings.Split(query, " ")
+	if len(words) > 1 {
+		for _, word := range words {
+			sresults := s.SubSearch(word)
+			results = append(results, sresults...)
+		}
 	}
+	return results
+}
+
+func (s *Searcher) SubSearch(word string) []string {
+	var words []string
+
+	if strings.HasPrefix(word, `"`) && strings.HasSuffix(word, `"`) {
+		word = word[1 : len(word)-1]
+	} else {
+		words = append(words, strings.ToLower(word))
+		words = append(words, strings.ToUpper(word))
+	}
+	words = append(words, word)
+
+	results := []string{}
+	for _, word := range words {
+		idxs := s.SuffixArray.Lookup([]byte(word), -1)
+		for _, idx := range idxs {
+			results = append(results, s.CompleteWorks[idx-250:idx+250])
+		}
+	}
+
 	return results
 }
